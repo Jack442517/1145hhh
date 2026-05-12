@@ -1,0 +1,42 @@
+name: Sync external release
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # 每小时检查一次
+  workflow_dispatch:     # 可以手动触发
+
+jobs:
+  sync_release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Get latest release from external repo
+        id: get_release
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const [owner, repo] = 'guoyue2010/lxmusic-'.split('/')
+            const release = await github.rest.repos.getLatestRelease({
+              owner,
+              repo
+            })
+            return release.data.assets.map(a => a.browser_download_url)
+      
+      - name: Download assets
+        run: |
+          urls=(${{ steps.get_release.outputs.result }})
+          mkdir -p external_files
+          for url in "${urls[@]}"; do
+            curl -L -o external_files/$(basename $url) $url
+          done
+
+      - name: Commit & push
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add external_files/*
+          git commit -m "Update external release files" || echo "No changes"
+          git push
